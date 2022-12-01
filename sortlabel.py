@@ -19,11 +19,11 @@ class TokenList:
     def get_num(self): return len(self.id2t)
 
 
-def label2vec(targrtlabels:list,dims= 1399,savefile='sortlabel.txt',sourcefile='train.json',f = lambda x:x['label']):
+def label2vec(targrtlabels:list,dims= 1400,savefile='sortlabel.txt',sourcefile='train.json',f = lambda x:x['label']):
     lab_vec = numpy.zeros(dims)
     llist = TokenList(file=savefile,source=LoadJsons(sourcefile),func=f)
     for label in targrtlabels:
-        loc = llist.get_id(label)-1
+        loc = llist.get_id(label)
         lab_vec[loc] = 1.0
     return lab_vec
 
