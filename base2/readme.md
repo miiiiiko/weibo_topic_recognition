@@ -1,0 +1,3 @@
+    使用标准BERT模型载入Roberta-wwm参数的Softmax模型，仅输出一个类
+    对于有多标签的样本[text,[label1,label2,...]]将其拆分为[text,label1],[text,label2],...
+    在验证集上计算F1时和真实的多标签计算f1
