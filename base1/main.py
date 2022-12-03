@@ -102,6 +102,7 @@ def plot_learning_curve(record):
     # x2 = x1[::config['valid_steps']]
     y1 = record['train_loss']
     y2 = record['val_f1']
+    y2 = [0 if np.isnan(i) else i for i in y2]
     x1 = np.arange(1,len(y1)+1)
     x2 = x1[1:len(y1)+1:int(len(y1)/len(y2))]
     fig = figure(figsize = (6,4))
@@ -140,7 +141,7 @@ if __name__ == '__main__':
     print("finish loading model")
     mfile = 'base1.pt'
 
-    epochs = 10
+    epochs = 100
     total_steps = len(dl_train) * epochs
 
     optimizer, scheduler = pt_utils.get_bert_optim_and_sche(model, 1e-4, total_steps)
@@ -193,7 +194,7 @@ if __name__ == '__main__':
 
     print('Start training!')
     pt_utils.train_model(model, optimizer, dl_train, epochs, train_func, test_func, scheduler=scheduler, save_file=mfile)
-    plot_learning_curve(record)
+    # plot_learning_curve(record)
     end_time = time.time()
     total_time = end_time-start_time
     train_time = total_time - val_time
@@ -201,6 +202,6 @@ if __name__ == '__main__':
     # val_time = cal_hour(val_time)
     # train_time = total_time - val_time
     print(f'Train_time:{train_time}, Val_time:{val_time}, total_time:{total_time}')
-
+    plot_learning_curve(record)
     print('done')
     
