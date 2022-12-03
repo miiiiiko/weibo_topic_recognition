@@ -1,3 +1,4 @@
+# 自定义的train_model函数和输出f1的test_func
 import tqdm
 def train_model(model, optimizer, train_dl, epochs=3, train_func=None, test_func=None, 
                 scheduler=None, save_file=None, accelerator=None, epoch_len=None):  # accelerator：适用于多卡的机器，epoch_len到该epoch提前停止
