@@ -21,7 +21,7 @@ import time
 import ljqpy
 import pt_utils
 from ljqpy import LoadJsons
-from pairdata import pairs_ts,pairs_vs
+from pairdata import StcPairSet,pairs_ts,pairs_vs
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 model_name = 'hfl/chinese-roberta-wwm-ext'
 tokenizer = BertTokenizer.from_pretrained(model_name)
@@ -78,9 +78,10 @@ class MyDataset(Dataset):
 # dataset = MyDataset(data)
 # tokenizer = BertTokenizer(model_name)
 def collate_fn(batch):
-    return (tokenizer([x[:2] for x in batch],return_tensors='pt',truncation=True, max_length=512,padding=True).input_ids,
-            tokenizer([x[:2] for x in batch],return_tensors='pt',truncation=True, max_length=512,padding=True).attention_mask,
-            tokenizer([x[:2] for x in batch],return_tensors='pt',truncation=True, max_length=512,padding=True).token_type_ids,
+    z = tokenizer([x[:2] for x in batch],return_tensors='pt',truncation=True, max_length=512,padding=True)
+    return (z.input_ids,
+            z.attention_mask,
+            z.token_type_ids,
             torch.cat([x[2] for x in batch], 0)
     )
     # # print(len(batch))
@@ -138,10 +139,12 @@ def cal_hour(seconds):
     return "%d:%02d:%02d" % (h, m, s)
     
 
-def train_model(model, optimizer, train_dl, epochs=3, train_func=None, test_func=None, 
+def train_model(model, optimizer, train_dpath, epochs=3, train_func=None, test_func=None, 
                 scheduler=None, save_file=None, accelerator=None, epoch_len=None):  # accelerator：适用于多卡的机器，epoch_len到该epoch提前停止
     best_f1 = -1
     for epoch in range(epochs):
+        train_ds = StcPairSet(100000,0.3,train_dpath,20)
+        train_dl = torch.utils.data.DataLoader(train_ds, batch_size=32, shuffle=True, collate_fn=collate_fn)
         model.train()
         print(f'\nEpoch {epoch+1} / {epochs}:')
         if accelerator:
@@ -210,7 +213,7 @@ if __name__ == '__main__':
     epochs = 40
     total_steps = len(dl_train) * epochs
 
-    optimizer, scheduler = pt_utils.get_bert_optim_and_sche(model, 1e-4, total_steps)
+    optimizer, scheduler = pt_utils.get_bert_optim_and_sche(model, 1e-5, total_steps)
     loss_func = nn.CrossEntropyLoss()
     start_time = time.time()
     val_time = 0
@@ -257,7 +260,7 @@ if __name__ == '__main__':
         return accu,prec,reca,f1
 
     print('Start training!')
-    train_model(model, optimizer, dl_train, epochs, train_func, test_func, scheduler=scheduler, save_file=mfile)
+    train_model(model, optimizer, '/home/qsm22/weibo_topic_recognition/dataset/train_normd.json', epochs, train_func, test_func, scheduler=scheduler, save_file=mfile)
     # plot_learning_curve(record)
     end_time = time.time()
     val_time = val_time/epochs
