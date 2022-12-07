@@ -82,7 +82,7 @@ class Text_sim:
         # print(n,len(text_ds))
         # print(len(text_ds))
         text_dl = DataLoader(text_ds,collate_fn=collate_fn,batch_size=32)
-        print(len(text_ds),n)
+        # print(len(text_ds),n)
         for ditem in text_dl:
             with torch.no_grad():
                 # total_count[0] += 1
@@ -144,7 +144,7 @@ class Text_sim:
         micro_low_freq_f1 = metrics.f1_score(yt,yp,average='micro')
         prec = metrics.precision_score(yt,yp,average='micro')
         reca = metrics.recall_score(yt,yp,average='micro')
-        print(f"Macro_f1: {macro_low_freq_f1 :.4f},  Micro_f1: { micro_low_freq_f1:.4f}, example_f1: {f1:.4f}, micro_prec{prec:.4f}, micro_rec{reca:.4f}")
+        print(f"Macro_f1: {macro_low_freq_f1 :.4f},  Micro_f1: { micro_low_freq_f1:.4f}, example_f1: {f1:.4f}, micro_prec: {prec:.4f}, micro_rec: {reca:.4f}")
         return 
 
         # with torch.no_grad():
@@ -160,11 +160,11 @@ mfile = '/home/qsm22/weibo_topic_recognition/512_base3.pt'
 model = Model()
 ts = Text_sim(model,mfile,llist,label2text,torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 infer_start = time.time()
-val_data = load_data('/home/qsm22/weibo_topic_recognition/dataset/val_normd.json')[:2]
-print('val_data:')
-print(val_data)
+val_data = load_data('/home/qsm22/weibo_topic_recognition/dataset/val_normd.json')[:100]
+# print('val_data:')
+# print(val_data)
 # print(ts.predict(val_data[0][0]))
-ts.eval_on_val(val_data,threshold=0.1,f=5)
+ts.eval_on_val(val_data,threshold=0.99,f=5)
 infer_end = time.time()
 print('Inference time per text')
 print(cal_hour((infer_end-infer_start)/len(val_data)))
