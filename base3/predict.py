@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 import time
 from tqdm import tqdm
 import numpy as np
+from sortlabel import loc
 
 label2text = defaultdict(list) 
 label2text[0] = []
@@ -31,7 +32,7 @@ def select_text(k, label2text):
 
 # print(len(label2text))
 # print([len(l) for l in select_text(2,label2text).values()])
-label2text = select_text(3,label2text)
+label2text = select_text(1,label2text)
 # print(label2text[0])
 # text_num =[]
 # for i in range(len(label2text)):
@@ -72,13 +73,16 @@ class Text_sim:
         
 
     # 对一个句子预测标签
-    def predict(self, sent, threshold=0.5):
-        scores_sum = [0] * llist.get_num()
+    def predict(self, sent, threshold=0.5,f=20):
+        n = loc(f,llist)
+        scores_sum = [0] * self.tl.get_num()
         # indices_count = [0] * llist.get_num()
         # total_count = [0,0]
-        text_ds = Text_DS(sent,self.label2text)
+        text_ds = Text_DS(sent,self.label2text,n)
+        # print(n,len(text_ds))
         # print(len(text_ds))
         text_dl = DataLoader(text_ds,collate_fn=collate_fn,batch_size=32)
+        print(len(text_ds),n)
         for ditem in text_dl:
             with torch.no_grad():
                 # total_count[0] += 1
@@ -89,8 +93,8 @@ class Text_sim:
                     scores_sum[indices[i]] += scores[i]
                     # indices_count[indices[i]] += 1
                     # total_count[1] += 1
-        res = [1 if item/3 > threshold else 0 for item in scores_sum]
-        return res
+        res = [1 if item > threshold else 0 for item in scores_sum]
+        return res,n
         # for i in range(llist.get_num()):
         #     text_l = label2text[i]
         #     if i < n or not text_l:
@@ -114,30 +118,33 @@ class Text_sim:
         # return res
         
 
-    def eval_on_val(self,val_data,threshold=0.5):
+    def eval_on_val(self,val_data,threshold=0.7,f=20):
         pbar = tqdm(val_data, total=len(val_data))
         self.model.eval()
         yt,yp = [],[] 
         # scores = []
         for d in pbar:
             # print(i)
+            # print(d)
             yt.append(label2vec(d[1]).astype('int64').tolist())
             # print(d[0])
-            res = self.predict(d[0],threshold)
+            res,n = self.predict(d[0],threshold=threshold,f=f)
             yp.append(res)
             #infos = {'index':{i}}
             #pbar.set_postfix(infos)
             # scores.append(score)
         # if not n:
         #     yt,yp = yt[n:],yp[n:]
+        # print(n)
         yt,yp = np.array(yt),np.array(yp)
+        yt,yp = yt[:,n:],yp[:,n:]
         pbar.close()
         f1 = metrics.f1_score(yt,yp,average='samples')
-        prec = metrics.precision_score(yt,yp,average='samples')
-        reca = metrics.recall_score(yt,yp,average='samples')
-        macro_low_freq_f1 = metrics.f1_score(yt[:,621:],yp[:,621:],average='macro')
-        micro_low_freq_f1 = metrics.f1_score(yt[:,621:],yp[:,621:],average='micro')
-        print(f"Prec: {prec:.4f},  Reca: {reca:.4f},  F1: {f1:.4f}, Macro_Low_freq_f1:{macro_low_freq_f1:4f},Micro_low_freq_f1:{micro_low_freq_f1:4f}")
+        macro_low_freq_f1 = metrics.f1_score(yt,yp,average='macro')
+        micro_low_freq_f1 = metrics.f1_score(yt,yp,average='micro')
+        prec = metrics.precision_score(yt,yp,average='micro')
+        reca = metrics.recall_score(yt,yp,average='micro')
+        print(f"Macro_f1: {macro_low_freq_f1 :.4f},  Micro_f1: { micro_low_freq_f1:.4f}, example_f1: {f1:.4f}, micro_prec{prec:.4f}, micro_rec{reca:.4f}")
         return 
 
         # with torch.no_grad():
@@ -153,9 +160,11 @@ mfile = '/home/qsm22/weibo_topic_recognition/512_base3.pt'
 model = Model()
 ts = Text_sim(model,mfile,llist,label2text,torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 infer_start = time.time()
-val_data = load_data('/home/qsm22/weibo_topic_recognition/dataset/val_normd.json')
+val_data = load_data('/home/qsm22/weibo_topic_recognition/dataset/val_normd.json')[:2]
+print('val_data:')
+print(val_data)
 # print(ts.predict(val_data[0][0]))
-ts.eval_on_val(val_data)
+ts.eval_on_val(val_data,threshold=0.1,f=5)
 infer_end = time.time()
 print('Inference time per text')
 print(cal_hour((infer_end-infer_start)/len(val_data)))
