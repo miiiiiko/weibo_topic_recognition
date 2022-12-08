@@ -15,13 +15,15 @@ import torch.nn as nn
 from torch.optim import AdamW
 import transformers
 from tqdm import tqdm
-
+import math
 from sklearn import metrics
 import time
 import ljqpy
 import pt_utils
 from ljqpy import LoadJsons
-from pairdata import StcPairSet,pairs_ts,pairs_vs
+from pairdata import StcPairSet,pairs_vs,sentence_pair_gen
+
+
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 model_name = 'hfl/chinese-roberta-wwm-ext'
 tokenizer = BertTokenizer.from_pretrained(model_name)
@@ -33,9 +35,9 @@ def load_data(fn):
     # print('loading data')
     return [(x["text_normd"], x["label"]) for x in ljqpy.LoadJsons(fn)]
 
-datadir = './dataset'
+# datadir = './dataset'
 
-xys = [load_data(os.path.join(datadir, '%s_normd.json') % tp) for tp in ['train', 'val']]
+# xys = [load_data(os.path.join(datadir, '%s_normd.json') % tp) for tp in ['train', 'val']]
 
 
 
@@ -139,12 +141,12 @@ def cal_hour(seconds):
     return "%d:%02d:%02d" % (h, m, s)
     
 
-def train_model(model, optimizer, train_dpath, epochs=3, train_func=None, test_func=None, 
-                scheduler=None, save_file=None, accelerator=None, epoch_len=None):  # accelerator：适用于多卡的机器，epoch_len到该epoch提前停止
+def train_model(model, optimizer, train_dpath, epochs=3, train_amount=100000, batch_size=8,train_func=None, test_func=None, 
+                scheduler=None, save_file=None,accelerator=None, epoch_len=None):  # accelerator：适用于多卡的机器，epoch_len到该epoch提前停止
     best_f1 = -1
     for epoch in range(epochs):
-        train_ds = StcPairSet(100000,0.3,train_dpath,20)
-        train_dl = torch.utils.data.DataLoader(train_ds, batch_size=32, shuffle=True, collate_fn=collate_fn)
+        train_ds = StcPairSet(sentence_pair_gen,train_amount,0.3,train_dpath,20)
+        train_dl = torch.utils.data.DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
         model.train()
         print(f'\nEpoch {epoch+1} / {epochs}:')
         if accelerator:
@@ -201,17 +203,19 @@ if __name__ == '__main__':
     # device = torch.device('cpu')
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = Model(model_name, 2).to(device)
-    ds_train, ds_test = pairs_ts,pairs_vs
-    print('loading data completed')
-    dl_train = torch.utils.data.DataLoader(ds_train, batch_size=32, shuffle=True, collate_fn=collate_fn)
+    ds_test = pairs_vs
+    # print('loading data completed')
+    # dl_train = torch.utils.data.DataLoader(ds_train, batch_size=32, shuffle=True, collate_fn=collate_fn)
     dl_test = torch.utils.data.DataLoader(ds_test, batch_size=32, collate_fn=collate_fn)
-    print("dataloader completed")
+    # print("dataloader completed")
     # model = Model(model_name, llist.get_num()).to(device)
     print("finish loading model")
-    mfile = '512_base3.pt'
+    mfile = './output/base3/512_base3.pt'
 
-    epochs = 40
-    total_steps = len(dl_train) * epochs
+    epochs = 30
+    train_amount = 100000
+    batch_size = 32
+    total_steps = math.ceil(train_amount/batch_size)* epochs
 
     optimizer, scheduler = pt_utils.get_bert_optim_and_sche(model, 1e-5, total_steps)
     loss_func = nn.CrossEntropyLoss()
@@ -258,9 +262,10 @@ if __name__ == '__main__':
         t2 = time.time()
         val_time += t2-t1
         return accu,prec,reca,f1
-
+    train_dpath = './dataset/train_normd.json'
     print('Start training!')
-    train_model(model, optimizer, '/home/qsm22/weibo_topic_recognition/dataset/train_normd.json', epochs, train_func, test_func, scheduler=scheduler, save_file=mfile)
+    # train_model(model, optimizer, '/home/qsm22/weibo_topic_recognition/dataset/train_normd.json',epochs,train_func, test_func,train_amount=train_amount,batch_size=batch_size,scheduler=scheduler, save_file=mfile)
+    train_model(model, optimizer, train_dpath, epochs, train_amount, batch_size,train_func, test_func, scheduler, save_file=mfile,epoch_len= math.ceil(train_amount/batch_size))
     # plot_learning_curve(record)
     end_time = time.time()
     val_time = val_time/epochs
@@ -269,7 +274,7 @@ if __name__ == '__main__':
     train_time = total_time - val_time
     total_time,train_time,val_time = cal_hour(total_time),cal_hour(train_time),cal_hour(val_time)
     print(f'Train_time:{train_time}, Val_time:{val_time}, total_time:{total_time}')
-    plot_learning_curve(record,'512_base3')
+    plot_learning_curve(record,'./output/base3/512_base3')
     print('done')
     
 # else:
