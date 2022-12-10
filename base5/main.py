@@ -48,19 +48,20 @@ def label2vec(targrtlabels:list,dims= llist.get_num()):
             lab_vec[loc] = 1.0
     return lab_vec
 
-
 class MyDataset(Dataset):
     def __init__(self,data,maxlen=128, requires_index = False):
         super().__init__()
         self.data = []        
         for i,d in enumerate(data):
-            # text = tokenizer([d[0]],return_tensors='pt', truncation=True, max_length=maxlen)['input_ids'][0]
+            # print(d[0])
+            text = tokenizer([d[0]],return_tensors='pt', truncation=True, max_length=maxlen)['input_ids'][0]
+            # print(text)
             label = label2vec(d[1],dims= llist.get_num())
             label = torch.from_numpy(label)
             if requires_index:
-                self.data.append([d[0],label,torch.tensor([i])])
+                self.data.append([text,label,torch.tensor([i])])
             else:
-                self.data.append([d[0],label])
+                self.data.append([text,label])
 
     
     def __getitem__(self, index):
@@ -77,12 +78,11 @@ class MyDataset(Dataset):
 
 def collate_fn(batch):
     # print(len(batch))
-    z = tokenizer([x[0] for x in batch],return_tensors='pt',truncation=True, max_length=256,padding=True)
     if len(batch[0]) ==2:
-        return (z.input_ids,z.attention_mask,
+        return (nn.utils.rnn.pad_sequence([x[0] for x in batch], batch_first=True),
 		    torch.stack([x[1] for x in batch], 0))
     else:
-        return (z.input_ids,z.attention_mask,
+        return (nn.utils.rnn.pad_sequence([x[0] for x in batch], batch_first=True),
 		    torch.stack([x[1] for x in batch], 0),torch.cat([x[2] for x in batch]))
         
 
@@ -94,8 +94,8 @@ def collate_fn(batch):
 # for batch in dl_train:
 def compute_kl_loss(p, q, pad_mask=None):
     # pad_mask = (pad_mask > 0.5)
-    p_loss = F.kl_div(F.log_softmax(p, dim=-1), F.softmax(q, dim=-1), reduction='none')
-    q_loss = F.kl_div(F.log_softmax(q, dim=-1), F.softmax(p, dim=-1), reduction='none')
+    p_loss = F.kl_div(torch.log(p), q, reduction='none')
+    q_loss = F.kl_div(torch.log(q), p, reduction='none')
     
     # pad_mask is for seq-level tasks
     if pad_mask is not None:
@@ -103,8 +103,8 @@ def compute_kl_loss(p, q, pad_mask=None):
         q_loss.masked_fill_(pad_mask, 0.)
 
     # You can choose whether to use function "sum" and "mean" depending on your task
-    p_loss = p_loss.sum()
-    q_loss = q_loss.sum()
+    p_loss = p_loss.mean()
+    q_loss = q_loss.mean()
 
     loss = (p_loss + q_loss) / 2
     return loss
@@ -205,7 +205,7 @@ if __name__ == '__main__':
     # device = torch.device('cpu')
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = Model(model_name, llist.get_num()).to(device)
-    ds_train, ds_test = MyDataset(xys[0],128), MyDataset(xys[1],128)
+    ds_train, ds_test = MyDataset(xys[0]), MyDataset(xys[1])
     print('loading data completed')
     dl_train = torch.utils.data.DataLoader(ds_train, batch_size=32, shuffle=True, collate_fn=collate_fn)
     dl_test = torch.utils.data.DataLoader(ds_test, batch_size=32, collate_fn=collate_fn)
@@ -218,16 +218,16 @@ if __name__ == '__main__':
     alpha = 4
     total_steps = len(dl_train) * epochs
 
-    optimizer, scheduler = pt_utils.get_bert_optim_and_sche(model, 1e-4, total_steps)
+    optimizer, scheduler = pt_utils.get_bert_optim_and_sche(model, 5e-5, total_steps)
     loss_func = nn.BCELoss()
     start_time = time.time()
     val_time = 0
     def train_func(model, ditem):
-        input_ids, attention_mask, yy = ditem[0].to(device), ditem[1].to(device), ditem[2].to(device)
-        logits1 = model(input_ids,attention_mask)
-        logits2 = model(input_ids,attention_mask)
-        ce_loss = 0.5*(loss_func(logits1.float(), yy.float()) + loss_func(logits2.float(), yy.float()))
-        kl_loss = compute_kl_loss(logits1, logits2)
+        input_ids, yy = ditem[0].to(device), ditem[1].to(device)
+        zz1 = model(input_ids)
+        zz2 = model(input_ids)
+        ce_loss = 0.5*(loss_func(zz1.float(), yy.float()) + loss_func(zz2.float(), yy.float()))
+        kl_loss = compute_kl_loss(zz1, zz2)
         loss = ce_loss + alpha * kl_loss
         record["train_loss"].append(loss.item())
         return {'loss': loss}
@@ -238,18 +238,20 @@ if __name__ == '__main__':
         yt, yp = [], []
         model.eval()
         with torch.no_grad():
-            for input_ids, attention_mask, yy in dl_test:
-                input_ids,attention_mask, yy = input_ids.to(device), attention_mask.to(device),yy
-                zz = (model(input_ids,attention_mask).detach().cpu() > 0.5).float().cpu()
+            for input_ids, yy in dl_test:
+                input_ids, yy = input_ids.to(device),yy
+                zz = (model(input_ids).detach().cpu() > 0.5).float().cpu()
                 for y in yy: yt.append(y)
                 for z in zz: yp.append(z)
             yt = torch.stack(yt,0).numpy().astype('int64')
             yp = torch.stack(yp,0).numpy().astype('int64')
+            print(yt.shape)
             accu = metrics.accuracy_score(yt,yp)
             prec = metrics.precision_score(yt,yp,average='samples')
             reca = metrics.recall_score(yt,yp,average='samples')
             f1 = metrics.f1_score(yt,yp,average='samples')
         print(f'Accu: {accu:.4f},  Prec: {prec:.4f},  Reca: {reca:.4f},  F1: {f1:.5f}')
+        record['val_f1'].append(f1)
         model.train()
         t2 = time.time()
         val_time += t2-t1

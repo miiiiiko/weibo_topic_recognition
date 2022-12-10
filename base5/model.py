@@ -15,7 +15,7 @@ class MLP(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = self.linear(x)
         x = self.activation(x)
         return x
@@ -31,8 +31,8 @@ class Model(nn.Module):
         
 
     # def forward(self,input_ids,attention_mask,token_type_ids):
-    def forward(self,input_ids, attention_mask):
-        x = self.encoder(input_ids=input_ids,attention_mask=attention_mask)
+    def forward(self,input_ids):
+        x = self.encoder(input_ids=input_ids)
         if self.encoder_type == "cls":
             x = x.last_hidden_state[:,0]
         if self.encoder_type == "pooler":
