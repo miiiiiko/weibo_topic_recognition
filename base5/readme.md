@@ -6,6 +6,4 @@
 
 与base1主要区别是:
 
-model.py加入dropout
-
 main.py修改了损失函数
