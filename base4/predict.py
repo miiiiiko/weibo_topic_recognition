@@ -36,11 +36,10 @@ def collate_c_fn(batch):
     # for d in batch:
     #     text.append(d[0])
     #     label.append(d[1])
-    z = tokenizer([d[0] for d in batch],return_tensors='pt',truncation=True, max_length=256,padding=True)
+    z = tokenizer([d for d in batch],return_tensors='pt',truncation=True, max_length=256,padding=True)
     return (z.input_ids,
             z.attention_mask,
             z.token_type_ids,
-            torch.cat([d[1] for d in batch], 0)
     )
 
 def collate_val_fn(batch):
@@ -87,7 +86,7 @@ class Text_Contrast_DS(Dataset):
         for i in range(n,len(label2text)):
             text_l = label2text[i]
             for t in text_l:
-                self.data.append([t,torch.tensor([i])])
+                self.data.append(t)
 
 
     def __getitem__(self, index):
@@ -104,31 +103,23 @@ def get_embedding(model,d_path,k=3,f=5,batch_size=64,device = torch.device('cuda
     ds = Text_Contrast_DS(d_path,k,n=loc(f,llist))
     dl = DataLoader(ds,collate_fn=collate_c_fn,batch_size=batch_size)
     rep = []
-    indices = []
+    # indices = []
     # res = []
     model = model.to(device)
     # out_path = './output/base4/label_respresentation.pt'
     with torch.no_grad():
         for ditem in dl:
-            input_ids,attention_mask,token_type_ids, zz = ditem[0].to(device), ditem[1].to(device),ditem[2].to(device),ditem[3]
+            input_ids,attention_mask,token_type_ids = ditem[0].to(device), ditem[1].to(device),ditem[2].to(device)
             # xx,zz = d
             # xx = xx.to(device)
             yy = model(input_ids,attention_mask,token_type_ids)
             rep.append(yy)
-            indices.append(zz)
+            # indices.append(zz)
     rep = torch.cat(rep)
     rep = F.normalize(rep,dim=1).cpu()
-    indices = torch.cat(indices)
+    # indices = torch.cat(indices)
     # print(indices)
-    return rep,indices
-
-
-# model = Model()
-# model.load_state_dict(torch.load('./output/base4/cls_base4.pt'))
-# rep,label = get_embedding(model,'./dataset/train_normd.json')
-
-
-
+    return rep
 
 
 class Text_cosine_sim:
@@ -139,7 +130,7 @@ class Text_cosine_sim:
         self.device = device
         self.model.load_state_dict(state_dict = torch.load(mfile, map_location=device))
         self.model.eval()
-        self.rep, self.indices = get_embedding(self.model, d_path, k, f, batch_size, device)
+        self.rep = get_embedding(self.model, d_path, k, f, batch_size, device)
         
 
     # 测试集上对句子列表预测标签
@@ -156,7 +147,8 @@ class Text_cosine_sim:
             cosine_scores = torch.mm(yy,self.rep.T)
             # print(cosine_scores.shape)
             for i in range(len(cosine_scores[0])):
-                scores[:,self.indices[i]] += cosine_scores[:,i]
+                j = loc(self.f,llist) + i//3
+                scores[:,j] += cosine_scores[:,i]
         scores = (scores/self.k > threshold).float()
         # print(scores)
         ret = []
@@ -180,20 +172,14 @@ class Text_cosine_sim:
                 yy = F.normalize(model(input_ids,attention_mask,token_type_ids)).cpu()
                 cosine_scores = torch.mm(yy,self.rep.T)
                 for i in range(len(cosine_scores[0])):
-                    scores[:,self.indices[i]] += cosine_scores[:,i]
+                    j = loc(self.f,llist) + i//3
+                    # print(j)
+                    scores[:,j] += cosine_scores[:,i]
                 scores = (scores/self.k > threshold).float() 
                 yt.append(zz)
                 yp.append(scores)
-            # print(len(yt),len(yp))
-            # print(yt[0].shape)
-            # print(yp[0].shape)
             yt = torch.cat(yt)[:,loc(self.f,llist):]
             yp = torch.cat(yp)[:,loc(self.f,llist):]
-            # print(yt.shape,yt[:,loc(self.f,llist):].shape)
-            # print(type(yt))
-            # print(type(yp))
-            # print(yt.shape,yp.shape,yt.dtype,yp.dtype)
-            # yt,yp = torch.int64(yt),torch.int64(yp)
             pbar.close()
             f1 = metrics.f1_score(yt,yp,average='samples')
             macro_low_freq_f1 = metrics.f1_score(yt,yp,average='macro')
@@ -206,7 +192,9 @@ class Text_cosine_sim:
 
 model = Model()
 mfile = './output/base4/cls_base4.pt'
+#model.load_state_dict(state_dict = torch.load(mfile, map_location='cuda'))
 d_path = './dataset/train_normd.json'
+#get_embedding(model,d_path)
 Cosine_sim = Text_cosine_sim(model,mfile,d_path)
 # print(Cosine_sim.predict([ "左航ZH超话 养成系追星不是投资也不是赌博,是我在陪左航长大 @TF家族-左航 ","我还挺喜欢黄太太的 不是大圣人会为自己儿女有私心，但是在大是大非上从不出错还很聪明"]))
 val_ds = Val_DS('./dataset/val_normd.json')
