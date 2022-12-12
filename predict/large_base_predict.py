@@ -46,7 +46,7 @@ class Multi_label:
                 for z in zz: yp.append(z)
             yt = torch.stack(yt, 0)
             yp = torch.stack(yp, 0)
-            print(yp.shape)
+            # print(yp.shape)
             f1 = f1_score(yt,yp,average='samples')
             prec = precision_score(yt,yp,average='samples')
             reca = recall_score(yt,yp,average='samples')
