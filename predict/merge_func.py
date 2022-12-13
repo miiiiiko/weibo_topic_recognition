@@ -56,12 +56,14 @@ class Val0_Classify():
     def argmax_func(self):     
         self.model.eval()
         x = self.x.unsqueeze(0)
-        y = self.y.unsqueeze(0)
+        
         with torch.no_grad():               
             x = x.to(self.device)                
             z_index = self.model(x).detach().cpu().argmax(-1).unsqueeze(1)
-            z = torch.zeros_like(y).scatter(1,z_index,1).cpu()
-        return z.squeeze(0)
+            z_score = self.model(x).detach().cpu().max()
+            z = torch.zeros(1,llist.get_num()).scatter(1,z_index,1).cpu()
+            z = z.squeeze(0)
+        return z, z_score
     
     def eval_on_val(self,threshold=0.8):        
         self.model.eval()
