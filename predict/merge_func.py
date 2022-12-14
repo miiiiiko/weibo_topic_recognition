@@ -1,12 +1,15 @@
+import sys
+sys.path.append('.')
+# sys.path.append('./base4')
 import torch
 
 import torch.nn.functional as F
 
-import model,sortlabel,model_base4,ljqpy
+from base1 import sortlabel,ljqpy
 
-from predict_bs4 import get_embedding
+# from base4.predict import get_embedding
 
-llist = sortlabel.TokenList('datasets/sortlabel.txt', source=ljqpy.LoadJsons('datasets/train.json'), func=lambda x:x['label'], low_freq=1, save_low_freq=1)
+llist = sortlabel.TokenList('dataset/sortlabel.txt', source=ljqpy.LoadJsons('dataset/train.json'), func=lambda x:x['label'], low_freq=1, save_low_freq=1)
 
 
 # model1 = model.Model()
@@ -16,61 +19,53 @@ llist = sortlabel.TokenList('datasets/sortlabel.txt', source=ljqpy.LoadJsons('da
 
 class Rules:
     def __init__(self,origin_ret,score,llist):
-        self.o_ret = origin_ret
-        self.score = score
-        self.ts = 0.1
+        self.o_ret = origin_ret     # original result
+        self.score = score # original score
+        self.ts = 0.1 # threshold
         self.tl = llist
-        self.lf = 5
-        self.hf = 200 # 频数大于该值的标签，默认200
+        self.lf = 5 # low_freq
+        self.hf = 200 # high_freq 频数大于该值的标签即为高频标签，默认200
     def rule1(self):  # 预测的标签都是低频标签，高频标签分数都很低
         ret = False
         
         highfreqlow = all(self.score[:sortlabel.loc(self.hf,self.tl)]<self.ts) 
         
         if sum(self.o_ret[1:]) != 0:
-            ret = (self.o_ret[1:].nonzero().min()+1 > sortlabel.loc(self.lf,self.tl)) and highfreqlow
+            ret = (self.o_ret[1:].nonzero().squeeze(1).min() >= sortlabel.loc(self.lf,self.tl)) and highfreqlow
                 
-        return ret
+        return ret #True or False
         
 
 
 class Val0_Classify():
-    def __init__(self,x,attm,tti,y,rep,k,f,model1,model4,mode = 'argmax'):
+    def __init__(self,llist, rep=None,k=3,f=5,model4=None,mode = 'argmax'):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.x = x
-        self.attm = attm
-        self.tti = tti
-        self.y = y
-        self.f = f
-        if mode == 'argmax':
-            self.model = model1
-            self.model.to(self.device)
+        self.tl = llist
+        
+        if mode == 'argmax': # 因为model1已经加载好并计算出成绩不需要重复加载
             self.fun = self.argmax_func
-        elif mode == 'sentence_pair':
+
+        elif mode == 'sentence_pair': # 此时需要加载模型model4
+            self.f = f
+            self.k = k
             self.model = model4
             self.model.to(self.device)           
-            self.k = k
             self.rep = rep
-            self.fun = self.eval_on_val
+            self.fun = self.sentence_pair_func
     
-    def argmax_func(self):     
-        self.model.eval()
-        x = self.x.unsqueeze(0)
+    def argmax_func(self,score_i):
+        # 此方法每次输入一个样本的成绩，将预测的标签与分数打包在一起。
+        pred_score, pred_idx = score_i.max(0)
+        pred_vec = torch.zeros(self.tl.get_num()).scatter(0,pred_idx,1)
+        return pred_vec,[(self.tl.get_token(pred_idx), pred_score.item())]    
         
-        with torch.no_grad():               
-            x = x.to(self.device)                
-            z_index = self.model(x).detach().cpu().argmax(-1).unsqueeze(1)
-            z_score = self.model(x).detach().cpu().max()
-            z = torch.zeros(1,llist.get_num()).scatter(1,z_index,1).cpu()
-            z = z.squeeze(0)
-        return z, z_score
-    
-    def eval_on_val(self,threshold=0.8):        
+
+    def sentence_pair_func(self,x, attm, tti, threshold=0.8):        
         self.model.eval()
-        input_ids = self.x.unsqueeze(0)
-        attention_mask = self.attm.unsqueeze(0)
-        token_type_ids = self.tti.unsqueeze(0)
-        y = self.y.unsqueeze(0)
+        input_ids = x.unsqueeze(0)
+        attention_mask = attm.unsqueeze(0)
+        token_type_ids = tti.unsqueeze(0)
+        
         with torch.no_grad():
             input_ids = input_ids.to(self.device)
             attention_mask = attention_mask.to(self.device)
@@ -87,7 +82,5 @@ class Val0_Classify():
             # print(scores[:,0])
             # scores = (scores/self.k > threshold).float()  # 取阈值
             scores = (scores/self.k).argmax(-1).unsqueeze(1)  # 取最大值
-            z = torch.zeros_like(y).scatter(1,scores,1).cpu()
+            z = torch.zeros(1,llist.get_num()).scatter(1,scores,1).cpu()
         return z.squeeze(0)
-                     
-
