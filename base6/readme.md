@@ -1,0 +1,1 @@
+几乎和base5一样，加了label_smoothing
