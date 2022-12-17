@@ -55,9 +55,19 @@ class Val0_Classify():
     
     def argmax_func(self,score_i):
         # 此方法每次输入一个样本的成绩，将预测的标签与分数打包在一起。
-        pred_score, pred_idx = score_i.max(0)
-        pred_vec = torch.zeros(self.tl.get_num()).scatter(0,pred_idx,1)
-        return pred_vec,[(self.tl.get_token(pred_idx), pred_score.item())]    
+        # score, idx = torch.sort(score_i,descending=True)
+        # if score[1] > 0.4*score[0]:
+        #     pred_idx = idx[:2]
+        # else:
+        #     pred_idx = idx[0].unsqueeze(0)
+        # pred_vec = torch.zeros(self.tl.get_num()).scatter(0,pred_idx,1)
+        # return pred_vec  
+        pred_vec = torch.zeros_like(score_i)
+        threshold = score_i.max()*0.4
+        for idx in (score_i > threshold).float().nonzero().squeeze(1):
+            pred_vec[idx] = 1
+        return pred_vec
+
         
 
     def sentence_pair_func(self,x, attm, tti, threshold=0.8):        
