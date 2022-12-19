@@ -2,7 +2,7 @@ import os
 import numpy
 from collections import defaultdict
 from ljqpy import LoadJsons,TokenList,FreqDict2List,SaveCSV,LoadCSV
-class TokenList:
+class TokenList:  # 将所有的标签按频数从高到低排序，保存到文件中
     def __init__(self, file, low_freq=1, source=None, func=None, save_low_freq=1, special_marks=[]):
         if not os.path.exists(file):
             tdict = defaultdict(int)
@@ -20,14 +20,14 @@ class TokenList:
     def get_token(self, ii): return self.id2t[ii]
     def get_num(self): return len(self.id2t)
 
-def label2vec(targrtlabels:list,llist:TokenList):
+def label2vec(targrtlabels:list,llist:TokenList):  # 读取每个文本的标签，并生成长度为标签个数的向量，其中该文本对应标签的值为1，其余为0
     lab_vec = numpy.zeros(llist.get_num())
     for label in targrtlabels:
         loc = llist.get_id(label)
         lab_vec[loc] = 1.0
     return lab_vec
 
-def label2id(targrtlabels:list,llist:TokenList):
+def label2id(targrtlabels:list,llist:TokenList): # 读取每个文本的标签，并获得它们在上面文件中的排序
     locs = []
     for label in targrtlabels:
         locs.append(llist.get_id(label))
@@ -39,5 +39,5 @@ def loc(num:int, llist:TokenList):
     for inx,i in enumerate(llist.id2freq): 
         if i < num+1: return inx+1
         elif inx == len(llist.id2freq)-1: return inx+1
-def sep_point(freq_list:list):
+def sep_point(freq_list:list):  # 返回一系列频数的位置id
     return [loc(item) for item in freq_list]
