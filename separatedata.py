@@ -2,11 +2,11 @@ import json,random
 import unicodedata
 from ljqpy import LoadJsons,SaveJsons
 
-def sep_data(file_path:str):
+def sep_data(file_path:str):  # 将数据随机打乱并切分成训练集和验证集
     data = []
-    for xx in LoadJsons(file_path):
+    for xx in LoadJsons(file_path):  # 数据格式.json
         xx['text_normd'] = xx['text'].replace('\u200b','')
-        xx['text_normd'] = unicodedata.normalize('NFKC', xx['text_normd'])
+        xx['text_normd'] = unicodedata.normalize('NFKC', xx['text_normd'])  # 同时清洗数据，并保存到新的字段中
         data.append(xx)
         
     random.shuffle(data)
